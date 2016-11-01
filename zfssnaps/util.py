@@ -1,3 +1,5 @@
+from __future__ import print_function
+
 import datetime
 import re
 
@@ -17,7 +19,7 @@ def get_snapshot_match(snapshot_name):
 def get_filesystem_match(fs_name):
     matches = []
     fs_expr = fs_name.replace("*", ".*")
-    output = grep(zfs.list("-t", "filesystem"), "%s " % fs_name)
+    output = zfs.list("-t", "filesystem")
     lines = output.splitlines()
     for l in lines:
         s = l.split()[0]
@@ -26,6 +28,7 @@ def get_filesystem_match(fs_name):
             matches.append(s)
     return matches
 
+
 def list_snapshots(filesystems=None):
     output = zfs.list("-t", "snapshot")
     if filesystems:
@@ -33,7 +36,7 @@ def list_snapshots(filesystems=None):
         for fs in filesystems:
             output_fs += grep(output, fs).stdout
         output = output_fs
-    print output
+    print(output)
 
 
 def do_snapshots(args):
@@ -59,7 +62,7 @@ def do_snapshots(args):
             new_snapshots.append(snapshot)
             if args.confirm or args.simulate:
                 if args.simulate:
-                    print "zfs snapshot %s" % (snapshot)
+                    print("zfs snapshot %s" % (snapshot))
                 else:
                     zfs.snapshot(snapshot)
     return new_snapshots
@@ -72,8 +75,8 @@ def delete_snapshots(args, snapshots):
 
         if args.confirm or args.simulate:
             if args.simulate:
-                print "Simulate removing snapshot: '%s'" % snapshot
-                print " %s" % cmd
+                print("Simulate removing snapshot: '%s'" % snapshot)
+                print(" %s" % cmd)
             else:
-                print "Removing snapshot: '%s'" % snapshot
+                print("Removing snapshot: '%s'" % snapshot)
                 zfs.destroy(snapshot)
