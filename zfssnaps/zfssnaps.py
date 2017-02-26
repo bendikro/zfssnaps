@@ -14,7 +14,8 @@ import sys
 
 from sh import ErrorReturnCode_1
 
-from util import get_snapshot_match, delete_snapshots, do_snapshots, list_snapshots
+from util import (get_snapshot_match, delete_snapshots, do_snapshots,
+                  list_snapshots, list_snapshot_groups)
 
 
 def delete(args):
@@ -63,6 +64,7 @@ def main():
     argparser.add_argument("--no-date", required=False, action='store_true',
                            help="Do not prepend date to name of new snapshots.")
     argparser.add_argument("-l", "--list", help="List snapshots.", required=False, action='store_true')
+    argparser.add_argument("-lsl", "--list-snapshot-labels", help="List snapshots grouped by label.", required=False, action='store_true')
     argparser.add_argument("-R", "--recursive", required=False, action='store_true',
                            help="Match recursively on filesystems.")
     argparser.add_argument("-s", "--simulate", required=False, action='store_true',
@@ -80,6 +82,9 @@ def main():
 
     if args.list:
         list_snapshots(args.file_system)
+        sys.exit(0)
+    elif args.list_snapshot_labels:
+        list_snapshot_groups(args.file_system)
         sys.exit(0)
 
     if args.new and not args.file_system:

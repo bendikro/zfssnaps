@@ -41,6 +41,7 @@ setup(
     packages=packages,
     install_requires=[
         'sh==1.11',
+        'humanfriendly==2.4',
     ],
     entry_points=entry_points
 )
