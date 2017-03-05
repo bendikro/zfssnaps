@@ -8,6 +8,13 @@ import humanfriendly
 from sh import zfs, grep
 
 
+def parse_size(val):
+    """ZFS on FreeBSD returns filesize with punctuation as decimal mark,
+    but ZOL uses comma. Replace comma with punctuation
+    """
+    return humanfriendly.parse_size(val.replace(",", "."), binary=False)
+
+
 def get_snapshot_match(snapshot_name):
     matches = []
     output = grep(zfs.list("-t", "snapshot"), "%s " % snapshot_name)
@@ -74,8 +81,8 @@ def list_snapshot_groups(filesystems=None):
             label_d = by_label[d["label"]]
             label_d["entries"].append(d)
             label_d["filesystems"].append(d["filesystem"])
-            label_d["used"] = label_d["used"] + humanfriendly.parse_size(d["used"], binary=False)
-            label_d["refer"] = label_d["refer"] + humanfriendly.parse_size(d["refer"], binary=False)
+            label_d["used"] = label_d["used"] + parse_size(d["used"])
+            label_d["refer"] = label_d["refer"] + parse_size(d["refer"])
 
     print_snapshot_groups(by_label)
 
