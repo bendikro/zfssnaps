@@ -26,18 +26,20 @@ def delete(args):
             print("-R can only be specified together with -f")
             sys.exit(0)
 
-        for s in args.snapshots:
+        for s in args.delete:
             match = get_snapshot_match(s)
             for m in match:
-                if m.startswith(args.file_system):
-                    snapshots.append(m)
+                for file_system in args.file_system:
+                    if m.startswith(file_system):
+                        snapshots.append(m)
     else:
         for s in args.delete:
             match = get_snapshot_match(s)
             for m in match:
                 if args.file_system:
-                    if m.startswith("%s@" % args.file_system):
-                        snapshots.append(m)
+                    for file_system in args.file_system:
+                        if m.startswith("%s@" % file_system):
+                            snapshots.append(m)
                 else:
                     snapshots.append(m)
 
