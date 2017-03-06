@@ -70,6 +70,7 @@ def main():
     argparser.add_argument("-s", "--simulate", required=False, action='store_true',
                            help="the commands that would be run without executing.")
     argparser.add_argument("-v", "--verbose", help="the commands.", required=False, action='store_true', default=True)
+    argparser.add_argument("--version", help="the commands.", required=False, action='store_true', default=False)
     argparser.add_argument("-f", "--file-system",  required=False, action='append',
                            help="File systems to operate on. May be given multiple times")
     argparser.add_argument("-c", "--confirm", help="Confirm operation.", required=False, action='store_true')
@@ -80,6 +81,10 @@ def main():
 
     args = argparser.parse_args()
 
+    if args.version:
+        from . import __version__
+        print(__version__)
+        sys.exit(0)
     if args.list:
         list_snapshots(args.file_system)
         sys.exit(0)
