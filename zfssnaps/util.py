@@ -41,7 +41,7 @@ def get_filesystem_match(fs_name):
 def get_snapshots(filesystems=None):
     output = zfs.list("-t", "snapshot")
     if filesystems:
-        output_fs = ""
+        output_fs = "%s\n" % output.splitlines()[0]
         for fs in filesystems:
             output_fs += grep(output, fs).stdout
         output = output_fs
@@ -49,7 +49,7 @@ def get_snapshots(filesystems=None):
 
 
 def list_snapshots(filesystems=None):
-    output = get_snapshots(filesystems=None)
+    output = get_snapshots(filesystems=filesystems)
     print(output)
 
 
