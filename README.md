@@ -18,4 +18,3 @@ Supports:
 * List snapshots
 * Create snapshots
 * Delete snapshots (Recursively)
-* Rollback snapshots (Recursively)
