@@ -2,10 +2,13 @@ from __future__ import print_function
 
 import collections
 import datetime
+import logging
 import re
 
 import humanfriendly
-from sh import zfs, grep
+from sh import grep, zfs
+
+logger = logging.getLogger('zfssnaps')
 
 
 def parse_size(val):
@@ -25,10 +28,15 @@ def get_snapshot_match(snapshot_name):
     return matches
 
 
-def get_filesystem_match(fs_name):
-    matches = []
-    fs_expr = fs_name.replace("*", ".*")
+def get_filesystem_list(pattern):
     output = zfs.list("-t", "filesystem")
+    fs = get_matches(pattern, output)
+    return fs
+
+
+def get_matches(pattern, output):
+    matches = []
+    fs_expr = pattern.replace("*", ".*")
     lines = output.splitlines()
     for l in lines:
         s = l.split()[0]
@@ -38,19 +46,27 @@ def get_filesystem_match(fs_name):
     return matches
 
 
+def get_snapshots_list(pattern):
+    output = zfs.list("-t", "snapshot")
+    snaps = get_matches(pattern, output)
+    return snaps
+
+
 def get_snapshots(filesystems=None):
     output = zfs.list("-t", "snapshot")
+    header = "%s" % output.splitlines()[0]
     if filesystems:
-        output_fs = "%s\n" % output.splitlines()[0]
+        output_fs = ""
         for fs in filesystems:
-            output_fs += grep(output, fs).stdout
+            g_out = grep(output, fs).stdout.decode("utf-8")
+            output_fs += g_out
         output = output_fs
-    return output
+    return header, output
 
 
 def list_snapshots(filesystems=None):
-    output = get_snapshots(filesystems=filesystems)
-    print(output)
+    header, output = get_snapshots(filesystems=filesystems)
+    print("%s\n%s" % (header, output))
 
 
 def print_snapshot_groups(by_label):
@@ -69,11 +85,12 @@ def print_snapshot_groups(by_label):
 
 
 def list_snapshot_groups(filesystems=None):
-    output = get_snapshots(filesystems=None)
+    header, output = get_snapshots(filesystems=None)
     by_label = collections.OrderedDict()
     for i, l in enumerate(output.splitlines()):
         #         zroot2@2015.02.20-21:06:18-Upgrade.10                     692K      -   553M  -
-        m = re.match("(?P<filesystem>.+)@(?P<label>\S+)\s+(?P<used>\S+)\s+(?P<avail>\S+)\s+(?P<refer>\S+)\s+(?P<mountpoint>\S+)", l)
+        m = re.match(r"(?P<filesystem>.+)@(?P<label>\S+)\s+(?P<used>\S+)\s+"
+                     r"(?P<avail>\S+)\s+(?P<refer>\S+)\s+(?P<mountpoint>\S+)", l)
         if m:
             d = m.groupdict()
             if not d["label"] in by_label:
@@ -101,9 +118,15 @@ def do_snapshots(args):
 
     for fs in args.file_system:
         if args.recursive:
-            matches = get_filesystem_match(fs)
+            matches = get_filesystem_list(fs)
         else:
             matches = [fs]
+
+        if args.file_system_exclude:
+            for exclude in args.file_system_exclude:
+                if exclude in matches:
+                    logger.debug("Excluding filesystem '%s'" % (exclude))
+                    matches.remove(exclude)
 
         for m in matches:
             snapshot = "%s@%s" % (m, name)
@@ -128,3 +151,15 @@ def delete_snapshots(args, snapshots):
             else:
                 print("Removing snapshot: '%s'" % snapshot)
                 zfs.destroy(snapshot)
+
+
+def rollback_snapshots(args, snapshots):
+    for snapshot in snapshots:
+        cmd = "/sbin/zfs rollback %s" % (snapshot)
+        if args.confirm or args.simulate:
+            if args.simulate:
+                print("Simulate rollback of snapshot: '%s'" % snapshot)
+                print(" %s" % cmd)
+            else:
+                print("Rolling back snapshot: '%s'" % snapshot)
+                zfs.rollback(snapshot)
