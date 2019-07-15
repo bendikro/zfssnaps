@@ -18,10 +18,15 @@ def parse_size(val):
     return humanfriendly.parse_size(val.replace(",", "."), binary=False)
 
 
-def get_snapshot_match(snapshot_name):
-    matches = []
-    output = grep(zfs.list("-t", "snapshot"), "%s " % snapshot_name)
+def get_snapshot_match(snapshot_name, filesystems=None):
+    """
+    Get the snapshot for each filesystems with the given snapshot
+    """
+    list_args = _get_zfs_list_snapshot_args(filesystems)
+    output = grep(zfs.list(list_args), "%s " % snapshot_name)
     lines = output.splitlines()
+
+    matches = []
     for l in lines:
         s = l.split()
         matches.append(s[0])
@@ -46,21 +51,28 @@ def get_matches(pattern, output):
     return matches
 
 
-def get_snapshots_list(pattern):
-    output = zfs.list("-t", "snapshot")
+def _get_zfs_list_snapshot_args(filesystems, extra_args=None):
+    list_args = ["-t", "snapshot"]
+    if filesystems:
+        list_args.append("-r")
+        list_args.extend(filesystems)
+
+    if extra_args:
+        list_args.extend(extra_args)
+    return list_args
+
+
+def get_snapshots_list(pattern, filesystems=None):
+    list_args = _get_zfs_list_snapshot_args(filesystems)
+    output = zfs.list(list_args)
     snaps = get_matches(pattern, output)
     return snaps
 
 
-def get_snapshots(filesystems=None):
-    output = zfs.list("-t", "snapshot")
+def get_snapshots(filesystems=None, extra_args=None):
+    list_args = _get_zfs_list_snapshot_args(filesystems, extra_args=extra_args)
+    output = zfs.list(list_args)
     header = "%s" % output.splitlines()[0]
-    if filesystems:
-        output_fs = ""
-        for fs in filesystems:
-            g_out = grep(output, fs).stdout.decode("utf-8")
-            output_fs += g_out
-        output = output_fs
     return header, output
 
 
@@ -69,7 +81,7 @@ def list_snapshots(filesystems=None):
     print("%s\n%s" % (header, output))
 
 
-def print_snapshot_groups(by_label):
+def print_snapshot_groups(by_label, order_by_date):
     base_fmt = "%%(name)-%(max_label)ds   %%(used)-%(max_used)ds   %%(refer)-%(max_refer)ds   %%(filesystems)s"
     max_label = max(len(e) for e in by_label.keys())
     max_used = max(len(humanfriendly.format_size(e["used"], binary=False)) for e in by_label.values())
@@ -77,31 +89,41 @@ def print_snapshot_groups(by_label):
 
     fmt = base_fmt % {"max_label": max_label, "max_used": max_used, "max_refer": max_refer}
     print(fmt % dict(name="LABEL", used="USED", refer="REFER", filesystems="FILESYSTEMS"))
-    for l in by_label.keys():
+
+    ordered = by_label
+    if order_by_date:
+        ordered = collections.OrderedDict(sorted(by_label.items(), key=lambda t: by_label[t[0]]['created'],
+                                                 reverse=True))
+
+    for l in ordered.keys():
         print(fmt % dict(name=l,
                          used=humanfriendly.format_size(by_label[l]["used"], binary=False),
                          refer=humanfriendly.format_size(by_label[l]["refer"], binary=False),
                          filesystems=", ".join(by_label[l]["filesystems"])))
 
 
-def list_snapshot_groups(filesystems=None):
-    header, output = get_snapshots(filesystems=None)
+def list_snapshot_groups(filesystems=None, order_by_date=False):
+    extra_args = ["-o", "name,used,available,referenced,mountpoint,creation"]
+    header, output = get_snapshots(filesystems=filesystems, extra_args=extra_args)
     by_label = collections.OrderedDict()
     for i, l in enumerate(output.splitlines()):
         #         zroot2@2015.02.20-21:06:18-Upgrade.10                     692K      -   553M  -
         m = re.match(r"(?P<filesystem>.+)@(?P<label>\S+)\s+(?P<used>\S+)\s+"
-                     r"(?P<avail>\S+)\s+(?P<refer>\S+)\s+(?P<mountpoint>\S+)", l)
+                     r"(?P<avail>\S+)\s+(?P<refer>\S+)\s+(?P<mountpoint>\S+)\s+(?P<created>.+)", l)
         if m:
             d = m.groupdict()
+
+            created_date_time = datetime.datetime.strptime(d['created'], '%a %b %d %H:%M %Y')
             if not d["label"] in by_label:
-                by_label[d["label"]] = {"entries": [], "used": 0, "refer": 0, "filesystems": []}
+                by_label[d["label"]] = {"entries": [], "used": 0, "refer": 0, "created": created_date_time,
+                                        "filesystems": []}
             label_d = by_label[d["label"]]
             label_d["entries"].append(d)
             label_d["filesystems"].append(d["filesystem"])
             label_d["used"] = label_d["used"] + parse_size(d["used"])
             label_d["refer"] = label_d["refer"] + parse_size(d["refer"])
 
-    print_snapshot_groups(by_label)
+    print_snapshot_groups(by_label, order_by_date=order_by_date)
 
 
 def do_snapshots(args):

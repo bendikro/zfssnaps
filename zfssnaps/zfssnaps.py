@@ -29,14 +29,14 @@ def delete(args):
             sys.exit(0)
 
         for s in args.delete:
-            match = util.get_snapshot_match(s)
+            match = util.get_snapshot_match(s, filesystems=args.file_system)
             for m in match:
                 for file_system in args.file_system:
                     if m.startswith(file_system):
                         snapshots.append(m)
     else:
         for s in args.delete:
-            match = util.get_snapshot_match(s)
+            match = util.get_snapshot_match(s, filesystems=args.file_system)
             for m in match:
                 if args.file_system:
                     for file_system in args.file_system:
@@ -63,7 +63,7 @@ def delete(args):
 
 
 def rollback(args):
-    snaps = util.get_snapshots_list(args.rollback)
+    snaps = util.get_snapshots_list(args.rollback, filesystems=args.file_system)
 
     if not snaps:
         print("No filesystem snapshots matched")
@@ -88,6 +88,8 @@ def main():
     argparser.add_argument("-l", "--list", required=False, action='store_true', help="List snapshots.")
     argparser.add_argument("-lsl", "--list-snapshot-labels", required=False, action='store_true',
                            help="List snapshots grouped by label.", )
+    argparser.add_argument("-lsld", "--list-snapshot-labels-by-date", required=False, action='store_true',
+                           help="List snapshots grouped by label, ordered by created date", )
     argparser.add_argument("-R", "--recursive", required=False, action='store_true',
                            help="Match recursively on filesystems.")
     argparser.add_argument("-s", "--simulate", required=False, action='store_true',
@@ -99,11 +101,14 @@ def main():
                            help="File systems to operate on. May be given multiple times")
     argparser.add_argument("-fe", "--file-system-exclude",  required=False, action='append',
                            help="File systems to exclude. May be given multiple times")
-    argparser.add_argument("-rb", "--rollback",  required=False, help="Rollback filesystems")
+    argparser.add_argument("-rb", "--rollback",  required=False,
+                           help="Rollback filesystem snapshot matching the pattern. Use asterix to match anything")
     argparser.add_argument("-c", "--confirm", required=False, action='store_true', help="Confirm operation.")
 
     group = argparser.add_mutually_exclusive_group(required=False)
-    group.add_argument("-d", "--delete",  nargs=1, required=False, help="Snapshot to delete.")
+    group.add_argument("-d", "--delete",  nargs=1, required=False,
+                       help=("Snapshot to delete. This is a grep pattern that must match the output "
+                             "from 'zfs list -t snapshot'"))
     group.add_argument("-n", "--new", required=False, action='store_true', help="Create new snapshot.")
 
     args = argparser.parse_args()
@@ -115,8 +120,8 @@ def main():
     if args.list:
         util.list_snapshots(args.file_system)
         sys.exit(0)
-    elif args.list_snapshot_labels:
-        util.list_snapshot_groups(args.file_system)
+    elif args.list_snapshot_labels or args.list_snapshot_labels_by_date:
+        util.list_snapshot_groups(args.file_system, order_by_date=args.list_snapshot_labels_by_date)
         sys.exit(0)
 
     if args.new and not args.file_system:

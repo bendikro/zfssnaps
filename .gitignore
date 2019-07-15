@@ -1,4 +1,5 @@
 build
 dist
 zfssnaps.egg-info/
+.tox
 *.pyc
