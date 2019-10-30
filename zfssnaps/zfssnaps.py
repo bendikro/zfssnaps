@@ -14,8 +14,8 @@ import sys
 
 from sh import ErrorReturnCode_1
 
-import util
-from log import setup_logging
+from . import util
+from .log import setup_logging
 
 setup_logging()
 
@@ -121,7 +121,8 @@ def main():
         util.list_snapshots(args.file_system)
         sys.exit(0)
     elif args.list_snapshot_labels or args.list_snapshot_labels_by_date:
-        util.list_snapshot_groups(args.file_system, order_by_date=args.list_snapshot_labels_by_date)
+        util.list_snapshot_groups(args.file_system, order_by_date=args.list_snapshot_labels_by_date,
+                                  verbose=args.verbose)
         sys.exit(0)
 
     if args.new and not args.file_system:

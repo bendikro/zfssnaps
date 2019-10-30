@@ -40,8 +40,8 @@ setup(
     long_description=__long_description__ if __long_description__ else __description__,
     packages=packages,
     install_requires=[
-        'sh==1.11',
-        'humanfriendly==2.4',
+        'sh>=1.11',
+        'humanfriendly>=2.4'
     ],
     entry_points=entry_points
 )

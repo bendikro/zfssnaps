@@ -2,13 +2,16 @@ from __future__ import print_function
 
 import collections
 import datetime
+import locale
 import logging
+import os
 import re
 
 import humanfriendly
 from sh import grep, zfs
 
 logger = logging.getLogger('zfssnaps')
+locale.setlocale(locale.LC_TIME, os.getenv('LC_TIME'))
 
 
 def parse_size(val):
@@ -69,8 +72,14 @@ def get_snapshots_list(pattern, filesystems=None):
     return snaps
 
 
-def get_snapshots(filesystems=None, extra_args=None):
+def get_command_str(cmd, args):
+    return "%s %s" % (cmd, " ".join(args))
+
+
+def get_snapshots(filesystems=None, extra_args=None, verbose=False):
     list_args = _get_zfs_list_snapshot_args(filesystems, extra_args=extra_args)
+    if verbose:
+        logger.info(get_command_str("zfs list", list_args))
     output = zfs.list(list_args)
     header = "%s" % output.splitlines()[0]
     return header, output
@@ -102,17 +111,17 @@ def print_snapshot_groups(by_label, order_by_date):
                          filesystems=", ".join(by_label[l]["filesystems"])))
 
 
-def list_snapshot_groups(filesystems=None, order_by_date=False):
+def list_snapshot_groups(filesystems=None, order_by_date=False, verbose=False):
     extra_args = ["-o", "name,used,available,referenced,mountpoint,creation"]
-    header, output = get_snapshots(filesystems=filesystems, extra_args=extra_args)
+    header, output = get_snapshots(filesystems=filesystems, extra_args=extra_args, verbose=verbose)
     by_label = collections.OrderedDict()
+
     for i, l in enumerate(output.splitlines()):
         #         zroot2@2015.02.20-21:06:18-Upgrade.10                     692K      -   553M  -
         m = re.match(r"(?P<filesystem>.+)@(?P<label>\S+)\s+(?P<used>\S+)\s+"
                      r"(?P<avail>\S+)\s+(?P<refer>\S+)\s+(?P<mountpoint>\S+)\s+(?P<created>.+)", l)
         if m:
             d = m.groupdict()
-
             created_date_time = datetime.datetime.strptime(d['created'], '%a %b %d %H:%M %Y')
             if not d["label"] in by_label:
                 by_label[d["label"]] = {"entries": [], "used": 0, "refer": 0, "created": created_date_time,
