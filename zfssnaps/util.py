@@ -14,6 +14,31 @@ logger = logging.getLogger('zfssnaps')
 locale.setlocale(locale.LC_TIME, os.getenv('LC_TIME'))
 
 
+def get_terminal_size():
+    import os
+    env = os.environ
+
+    def ioctl_GWINSZ(fd):  # noqa: N802
+        try:
+            import fcntl, termios, struct  # noqa: E401
+            cr = struct.unpack('hh', fcntl.ioctl(fd, termios.TIOCGWINSZ,
+                                                 '1234'))
+        except:  # noqa: E722
+            return
+        return cr
+    cr = ioctl_GWINSZ(0) or ioctl_GWINSZ(1) or ioctl_GWINSZ(2)
+    if not cr:
+        try:
+            fd = os.open(os.ctermid(), os.O_RDONLY)
+            cr = ioctl_GWINSZ(fd)
+            os.close(fd)
+        except:  # noqa: E722
+            pass
+    if not cr:
+        cr = (env.get('LINES', 25), env.get('COLUMNS', 80))
+    return int(cr[1]), int(cr[0])
+
+
 def parse_size(val):
     """ZFS on FreeBSD returns filesize with punctuation as decimal mark,
     but ZOL uses comma. Replace comma with punctuation
@@ -104,11 +129,29 @@ def print_snapshot_groups(by_label, order_by_date):
         ordered = collections.OrderedDict(sorted(by_label.items(), key=lambda t: by_label[t[0]]['created'],
                                                  reverse=True))
 
+    w, h = get_terminal_size()
     for l in ordered.keys():
-        print(fmt % dict(name=l,
-                         used=humanfriendly.format_size(by_label[l]["used"], binary=False),
-                         refer=humanfriendly.format_size(by_label[l]["refer"], binary=False),
-                         filesystems=", ".join(by_label[l]["filesystems"])))
+        filesystems = by_label[l]["filesystems"]
+        fs_count = len(filesystems)
+        out_str = ""
+
+        # If the line is too big for the terminal print the filesystems on multiple lines
+        name = l
+        used = humanfriendly.format_size(by_label[l]["used"], binary=False)
+        refer = humanfriendly.format_size(by_label[l]["refer"], binary=False)
+        while fs_count:
+            out_str = fmt % dict(name=name, used=used, refer=refer, filesystems=", ".join(filesystems[0:fs_count]))
+            if len(out_str) > w:
+                fs_count -= 1
+                if fs_count == 0:
+                    break
+            else:
+                print(out_str)
+                filesystems = filesystems[fs_count:]
+                fs_count = len(filesystems)
+                name = ""
+                used = ""
+                refer = ""
 
 
 def list_snapshot_groups(filesystems=None, order_by_date=False, verbose=False):
