@@ -85,11 +85,6 @@ def main():
                            help="Message to postfix the name of the snapshot.")
     argparser.add_argument("--no-date", required=False, action='store_true',
                            help="Do not prepend date to name of new snapshots.")
-    argparser.add_argument("-l", "--list", required=False, action='store_true', help="List snapshots.")
-    argparser.add_argument("-lsl", "--list-snapshot-labels", required=False, action='store_true',
-                           help="List snapshots grouped by label.", )
-    argparser.add_argument("-lsld", "--list-snapshot-labels-by-date", required=False, action='store_true',
-                           help="List snapshots grouped by label, ordered by created date", )
     argparser.add_argument("-R", "--recursive", required=False, action='store_true',
                            help="Match recursively on filesystems.")
     argparser.add_argument("-s", "--simulate", required=False, action='store_true',
@@ -97,19 +92,29 @@ def main():
     argparser.add_argument("-v", "--verbose", required=False, action='store_true', default=True,
                            help="the commands.")
     argparser.add_argument("--version", help="the commands.", required=False, action='store_true', default=False)
+    argparser.add_argument("-fsp", "--file-system-property",  required=False, action='store',
+                           help="File system property with optional value (key=value)")
     argparser.add_argument("-f", "--file-system",  required=False, action='append',
                            help="File systems to operate on. May be given multiple times")
     argparser.add_argument("-fe", "--file-system-exclude",  required=False, action='append',
                            help="File systems to exclude. May be given multiple times")
-    argparser.add_argument("-rb", "--rollback",  required=False,
-                           help="Rollback filesystem snapshot matching the pattern. Use asterix to match anything")
     argparser.add_argument("-c", "--confirm", required=False, action='store_true', help="Confirm operation.")
 
     group = argparser.add_mutually_exclusive_group(required=False)
-    group.add_argument("-d", "--delete",  nargs=1, required=False,
+    group.add_argument("-d", "--delete",  metavar='<snapshot>', nargs=1, required=False,
                        help=("Snapshot to delete. This is a grep pattern that must match the output "
                              "from 'zfs list -t snapshot'"))
-    group.add_argument("-n", "--new", required=False, action='store_true', help="Create new snapshot.")
+    group.add_argument("-n", "--new", required=False, action='store_true', help="Make NEW snapshot.")
+    group.add_argument("-rb", "--rollback",  required=False,
+                       help="Rollback filesystem snapshot matching the pattern. Use asterix to match anything")
+    group.add_argument("-l", "--list", required=False, action='store_true', help="List snapshots.")
+    group.add_argument("-lsl", "--list-snapshot-labels", required=False, action='store_true',
+                       help="List snapshots grouped by label.")
+    group.add_argument("-lsld", "--list-snapshot-labels-by-date", required=False, action='store_true',
+                       help="List snapshots grouped by label, ordered by created date", )
+    group.add_argument("-lfs", "--list-filesystems", required=False, action='store_true',
+                       help="List filesystems")
+
 
     args = argparser.parse_args()
 
@@ -118,16 +123,23 @@ def main():
         print(__version__)
         sys.exit(0)
     if args.list:
-        util.list_snapshots(args.file_system)
+        util.list_snapshots(filesystems=args.file_system, recursive=args.recursive,
+                            fs_property=args.file_system_property)
         sys.exit(0)
     elif args.list_snapshot_labels or args.list_snapshot_labels_by_date:
-        util.list_snapshot_groups(args.file_system, order_by_date=args.list_snapshot_labels_by_date,
+        util.list_snapshot_groups(filesystems=args.file_system, recursive=args.recursive,
+                                  fs_property=args.file_system_property,
+                                  order_by_date=args.list_snapshot_labels_by_date,
                                   verbose=args.verbose)
+        sys.exit(0)
+    elif args.list_filesystems:
+        util.print_filesystems(args.file_system, fs_property_value=args.file_system_property)
         sys.exit(0)
 
     if args.new and not args.file_system:
         print("Please specify a file system with -f")
         sys.exit(0)
+
     if args.new:
         if args.no_date and not args.message:
             print("The --no-date option cannot be used without --message")
@@ -149,14 +161,19 @@ def main():
     elif args.rollback:
         rollback(args)
     else:
+        util.cprint("Operation missing. Must be one of -d, -n, -rb", color='red')
         argparser.print_help()
+        #print("group:", dir(group))
+        #print("group.prefix_chars:", group.prefix_chars)
+        #print("group.prefix_chars:", group.__dict__)
+        #print("_mutually_exclusive_groups:", dir(group._mutually_exclusive_groups))
 
 
 def entry(args=None):
     try:
         main()
     except ErrorReturnCode_1 as ex:
-        print("Error:", ex.stderr)
+        print("Error:", ex)
 
 
 if __name__ == '__main__':

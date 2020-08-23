@@ -8,7 +8,20 @@ import os
 import re
 
 import humanfriendly
-from sh import grep, zfs
+from sh import grep, zfs, ErrorReturnCode_1
+
+try:
+    from termcolor import colored, cprint
+    termcolor = True
+except ImportError:
+    termcolor = False
+
+    def cprint(*arg, **kwargs):
+        print(*arg)
+
+    def colored(text, color):
+        return text
+
 
 logger = logging.getLogger('zfssnaps')
 locale.setlocale(locale.LC_TIME, os.getenv('LC_TIME'))
@@ -39,6 +52,21 @@ def get_terminal_size():
     return int(cr[1]), int(cr[0])
 
 
+class FsProperty(object):
+
+    def __init__(self, prop):
+        prop_key_val = prop.split('=')
+        self.name = prop_key_val[0]
+        self.filter = prop_key_val[1] if len(prop_key_val) == 2 else None
+        self.value = None
+
+    def __str__(self):
+        return "%s = %s" % (self.name, self.value)
+
+    def __repr__(self):
+        return "%s = %s" % (self.name, self.value)
+
+
 def parse_size(val):
     """ZFS on FreeBSD returns filesize with punctuation as decimal mark,
     but ZOL uses comma. Replace comma with punctuation
@@ -61,9 +89,30 @@ def get_snapshot_match(snapshot_name, filesystems=None):
     return matches
 
 
-def get_filesystem_list(pattern):
-    output = zfs.list("-t", "filesystem")
-    fs = get_matches(pattern, output)
+def print_filesystems(filesystems=None, recursive=False, fs_property_value=None):
+    fslist = []
+    for fs in filesystems:
+        fslist.extend(get_filesystems(fs, fs_property_value=fs_property_value))
+
+    for fs_name, fsprop in fslist:
+        fs_prop_str = ""
+        if fsprop:
+            fs_prop_str = "%s = %s" % (fsprop.name, fsprop.value)
+        print("- %-20s  %s" % (fs_name, fs_prop_str))
+
+
+def get_filesystems(pattern, fs_property_value=None):
+    """
+    Returns dict
+    """
+    output = zfs.list("-t", "filesystem", '-H')
+    fslist = get_matches(pattern, output)
+
+    if fs_property_value:
+        fs = filter_zfs_property(fslist, fs_property_value)
+    else:
+        fs = dict([(fs, None) for fs in fslist])
+
     return fs
 
 
@@ -97,21 +146,69 @@ def get_snapshots_list(pattern, filesystems=None):
     return snaps
 
 
+def get_zfs_property(fs, fsprop):
+    value = zfs.get('-H', '-o', 'value', fsprop.name, fs).strip()
+    fsprop.value = value
+    return value
+
+
+def filter_zfs_property(fs, fs_property):
+    print("filter_zfs_property")
+
+    if not type(fs) in [list, tuple]:
+        fs = [fs]
+
+    result = {}
+    for fs_name in fs:
+        fsprop = FsProperty(fs_property)
+        print("fsprop:", fsprop)
+        value = get_zfs_property(fs_name, fsprop)
+
+
+        if fsprop.filter is not None:
+            if fsprop.filter == value:
+                result[fs_name] = {"fsprop": fsprop}
+        else:
+            result[fs_name] = {}
+
+    return result
+
+
 def get_command_str(cmd, args):
     return "%s %s" % (cmd, " ".join(args))
 
 
-def get_snapshots(filesystems=None, extra_args=None, verbose=False):
+def get_snapshots(filesystems=None, recursive=False, fs_property=None, extra_args=None, verbose=False):
     list_args = _get_zfs_list_snapshot_args(filesystems, extra_args=extra_args)
     if verbose:
         logger.info(get_command_str("zfs list", list_args))
     output = zfs.list(list_args)
     header = "%s" % output.splitlines()[0]
+    if filesystems:
+        output_fs = ""
+        for fs in filesystems:
+            if fs_property:
+                if not filter_zfs_property(fs, fs_property):
+                    print("Discarding filesystem: %s" % (fs))
+                    continue
+
+            if not recursive:
+                fs = "%s@" % (fs)
+
+            try:
+                g_out = grep(output, fs).stdout.decode("utf-8")
+                output_fs += g_out
+            except ErrorReturnCode_1:
+                # No matches found
+                pass
+
+        output = output_fs
     return header, output
 
 
-def list_snapshots(filesystems=None):
-    header, output = get_snapshots(filesystems=filesystems)
+def list_snapshots(filesystems=None, recursive=False, fs_property=None):
+    header, output = get_snapshots(
+        filesystems=filesystems, recursive=recursive, fs_property=fs_property)
     print("%s\n%s" % (header, output))
 
 
@@ -154,9 +251,10 @@ def print_snapshot_groups(by_label, order_by_date):
                 refer = ""
 
 
-def list_snapshot_groups(filesystems=None, order_by_date=False, verbose=False):
+def list_snapshot_groups(filesystems=None, recursive=False, fs_property=None, order_by_date=False, verbose=False):
     extra_args = ["-o", "name,used,available,referenced,mountpoint,creation"]
-    header, output = get_snapshots(filesystems=filesystems, extra_args=extra_args, verbose=verbose)
+    header, output = get_snapshots(filesystems=filesystems, recursive=recursive, fs_property=fs_property,
+                                   extra_args=extra_args, verbose=verbose)
     by_label = collections.OrderedDict()
 
     for i, l in enumerate(output.splitlines()):
@@ -192,15 +290,18 @@ def do_snapshots(args):
 
     for fs in args.file_system:
         if args.recursive:
-            matches = get_filesystem_list(fs)
+            matches = get_filesystems(fs, args.file_system_property)
         else:
+            if args.file_system_property:
+                if not filter_zfs_property(fs, args.file_system_property):
+                    continue
             matches = [fs]
 
         if args.file_system_exclude:
             for exclude in args.file_system_exclude:
                 if exclude in matches:
                     logger.debug("Excluding filesystem '%s'" % (exclude))
-                    matches.remove(exclude)
+                    del matches[exclude]
 
         for m in matches:
             snapshot = "%s@%s" % (m, name)
@@ -210,6 +311,7 @@ def do_snapshots(args):
                     print("zfs snapshot %s" % (snapshot))
                 else:
                     zfs.snapshot(snapshot)
+
     return new_snapshots
 
 
