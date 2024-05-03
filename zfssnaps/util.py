@@ -79,7 +79,7 @@ def get_snapshot_match(snapshot_name, filesystems=None):
     Get the snapshot for each filesystems with the given snapshot
     """
     list_args = _get_zfs_list_snapshot_args(filesystems)
-    output = grep(zfs.list(list_args), "%s " % snapshot_name)
+    output = grep("%s" % snapshot_name, _in=zfs.list(list_args))
     lines = output.splitlines()
 
     matches = []
