@@ -290,20 +290,22 @@ def do_snapshots(args):
 
     for fs in args.file_system:
         if args.recursive:
-            matches = get_filesystems(fs, args.file_system_property)
+            fs_matches = get_filesystems(fs, args.file_system_property)
         else:
             if args.file_system_property:
                 if not filter_zfs_property(fs, args.file_system_property):
                     continue
-            matches = [fs]
+            fs_matches = [fs]
 
         if args.file_system_exclude:
             for exclude in args.file_system_exclude:
-                if exclude in matches:
-                    logger.debug("Excluding filesystem '%s'" % (exclude))
-                    del matches[exclude]
+                for fs_match in list(fs_matches.keys()):
+                    m = re.search(exclude, fs_match)
+                    if m:
+                        logger.debug("Excluding filesystem '%s'" % (exclude))
+                        del fs_matches[fs_match]
 
-        for m in matches:
+        for m in fs_matches:
             snapshot = "%s@%s" % (m, name)
             new_snapshots.append(snapshot)
             if args.confirm or args.simulate:
